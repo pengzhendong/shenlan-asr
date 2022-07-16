@@ -8,88 +8,105 @@ num_gaussian = 5
 num_iterations = 5
 targets = ['Z', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'O']
 
-class GMM:
-    def __init__(self, D, K=5):
-        assert(D>0)
-        self.dim = D
-        self.K = K
-        #Kmeans Initial
-        self.mu , self.sigma , self.pi = self.kmeans_initial()
 
-    def kmeans_initial(self):
-        mu = []
-        sigma = []
-        data = read_all_data('train/feats.scp')
-        (centroids, labels) = vq.kmeans2(data, self.K, minit="points", iter=100)
+class GMM:
+
+    def __init__(self, X, D, K=5):
+        """ Initialize the parameters of the Gaussian mixture model
+            :param X: a matrix including data samples, N * D
+            :param D: the dimension of data points, 39 dimensional MFCC features
+            :param K: the number of the components in the Gaussian mixture model
+        """
+        assert (D > 0)
+        self.D = D
+        self.K = K
+        self.pi = []
+        self.mu = []
+        self.sigma = []
+        # K-means initial
+        self.kmeans_initial(X)
+
+    def kmeans_initial(self, X):
+        """ Initial the Gaussian mixture model with K-means algorithm
+            :param X: a matrix including data samples, N * D
+        """
+        (_, labels) = vq.kmeans2(X, self.K, minit='points', iter=100)
         clusters = [[] for i in range(self.K)]
-        for (l,d) in zip(labels,data):
-            clusters[l].append(d)
+        for (label, x) in zip(labels, X):
+            clusters[label].append(x)
 
         for cluster in clusters:
-            mu.append(np.mean(cluster, axis=0))
-            sigma.append(np.cov(cluster, rowvar=0))
-        pi = np.array([len(c)*1.0 / len(data) for c in clusters])
-        return mu , sigma , pi
-    
-    def gaussian(self , x , mu , sigma):
-        """Calculate gaussion probability.
-    
-            :param x: The observed data, dim*1.
-            :param mu: The mean vector of gaussian, dim*1
-            :param sigma: The covariance matrix, dim*dim
+            self.pi.append(len(cluster) * 1.0 / len(X))
+            self.mu.append(np.mean(cluster, axis=0))
+            self.sigma.append(np.cov(cluster, rowvar=0))
+
+    def gaussian(self, x, k):
+        """ Calculate gaussion probability of the kth gaussion model
+            :param x: the observed data, dim * 1
+            :param k: the kth gaussion model
             :return: the gaussion probability, scalor
         """
-        D=x.shape[0]
-        det_sigma = np.linalg.det(sigma)
-        inv_sigma = np.linalg.inv(sigma + 0.0001)
-        mahalanobis = np.dot(np.transpose(x-mu), inv_sigma)
-        mahalanobis = np.dot(mahalanobis, (x-mu))
-        const = 1/((2*np.pi)**(D/2))
-        return const * (det_sigma)**(-0.5) * np.exp(-0.5 * mahalanobis)
-    
-    def calc_log_likelihood(self , X):
-        """Calculate log likelihood of GMM
+        det_sigma = np.linalg.det(self.sigma[k])
+        inv_sigma = np.linalg.inv(self.sigma[k] + np.finfo(float).eps)
+        mahalanobis = np.dot(np.dot((x - self.mu[k]).T, inv_sigma),
+                             (x - self.mu[k]))
+        const = 1 / ((2 * np.pi)**(self.D / 2))
+        return const * det_sigma**(-0.5) * np.exp(-0.5 * mahalanobis)
 
-            param: X: A matrix including data samples, num_samples * D
-            return: log likelihood of current model 
+    def calc_log_likelihood(self, X):
+        """ Calculate log likelihood of GMM
+            param: X: a matrix including data samples samples, N * D
+            return: log likelihood of current model
         """
+        N = len(X)
+        gamma = np.zeros((self.K, N))
+        for k in range(self.K):
+            for n in range(N):
+                gamma[k, n] = self.pi[k] * self.gaussian(X[n, :], k)
+        log_llh = np.sum(np.log(np.sum(gamma, axis=0)))
 
-        log_llh = 0.0
-        """
-            FINISH by YOUSELF
-        """
         return log_llh
 
-    def em_estimator(self , X):
-        """Update paramters of GMM
+    def em_estimator(self, X):
+        """ Update paramters of GMM
+            param: X: a matrix including data samples samples, N * D
+            return: log likelihood of updated model
+        """
+        # E step
+        N = len(X)
+        gamma = np.zeros((self.K, N))
+        for k in range(self.K):
+            for n in range(N):
+                gamma[k, n] = self.pi[k] * self.gaussian(X[n, :], k)
+        gamma /= np.sum(gamma, axis=0)
 
-            param: X: A matrix including data samples, num_samples * D
-            return: log likelihood of updated model 
-        """
-
-        log_llh = 0.0
-        """
-            FINISH by YOUSELF
-        """
+        # M step
+        self.pi = []
+        self.mu = []
+        self.sigma = []
+        for k in range(self.K):
+            Nk = np.sum(gamma[k, :])
+            self.pi.append(Nk / N)
+            self.mu.append(np.dot(gamma[k, :], X) / Nk)
+            self.sigma.append(
+                np.dot(gamma[k, :] * (X - self.mu[k]).T, X - self.mu[k]) / Nk)
         log_llh = self.calc_log_likelihood(X)
-
         return log_llh
 
 
-def train(gmms, num_iterations = num_iterations):
-    dict_utt2feat, dict_target2utt = read_feats_and_targets('train/feats.scp', 'train/text')
-    
-    for target in targets:
-        feats = get_feats(target, dict_utt2feat, dict_target2utt)   #
-        for i in range(num_iterations):
-            log_llh = gmms[target].em_estimator(feats)
-    return gmms
+def train(gmm, feats, num_iterations=num_iterations):
+    for i in range(num_iterations):
+        log_llh = gmm.em_estimator(feats)
+        print('Iteration {}: {}'.format(i, log_llh))
+    return gmm
+
 
 def test(gmms):
     correction_num = 0
     error_num = 0
     acc = 0.0
-    dict_utt2feat, dict_target2utt = read_feats_and_targets('test/feats.scp', 'test/text')
+    dict_utt2feat, dict_target2utt = read_feats_and_targets(
+        'test/feats.scp', 'test/text')
     dict_utt2target = {}
     for target in targets:
         utts = dict_target2utt[target]
@@ -111,9 +128,13 @@ def test(gmms):
 
 def main():
     gmms = {}
+    dict_utt2feat, dict_target2utt = read_feats_and_targets(
+        'train/feats.scp', 'train/text')
     for target in targets:
-        gmms[target] = GMM(39, K=num_gaussian) #Initial model
-    gmms = train(gmms)
+        print('Initialize and train for target {}'.format(target))
+        feats = get_feats(target, dict_utt2feat, dict_target2utt)
+        gmms[target] = GMM(feats, D=39, K=num_gaussian)
+        gmms[target] = train(gmms[target], feats)
     acc = test(gmms)
     print('Recognition accuracy: %f' % acc)
     fid = open('acc.txt', 'w')
