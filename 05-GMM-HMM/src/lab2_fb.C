@@ -67,20 +67,33 @@ double forward_backward(const Graph& graph, const matrix<double>& gmmProbs,
   //      chart(frmIdx, stateIdx).set_back_log_prob(logProb);
   //
   //  Fill in forward pass here.
+  // 1. Init chart
+  for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
+    chart(0, stateIdx).set_forw_log_prob(g_zeroLogProb);
+    chart(0, stateIdx).set_back_log_prob(g_zeroLogProb);
+  }
+  chart(0, graph.get_start_state()).set_forw_log_prob(0);
+  // 2. Recursive forward pass
+  for (int frmIdx = 1; frmIdx <= frmCnt; ++frmIdx) {
+    for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
+      int arcCnt = graph.get_arc_count(stateIdx);
+      int arcId = graph.get_first_arc_id(stateIdx);
+      for (int arcIdx = 0; arcIdx < arcCnt; ++arcIdx) {
+        Arc arc;
+        arcId = graph.get_arc(arcId, arc);
+        int dstState = arc.get_dst_state();
+        double logProb = chart(frmIdx - 1, stateIdx).get_forw_log_prob() +
+                         arc.get_log_prob() +
+                         gmmProbs(frmIdx - 1, arc.get_gmm());
 
-  // Init chart
-  // Recursive forward pass 
-
-  // DEBUG forward
-  // cout << "forward" << endl;
-  // for (int frmIdx = 0; frmIdx <= frmCnt; ++frmIdx) {
-  //   for (int srcIdx = 0; srcIdx < stateCnt; ++srcIdx) {
-  //     cout << format(" %d") % chart(frmIdx, srcIdx).get_forw_log_prob();
-  //   }
-  //   cout << endl;
-  // }
+        // ln(a+b) = ln(exp(ln(a)) + exp(ln(b)))
+        logProb = add_log_probs(vector<double>{
+            logProb, chart(frmIdx, dstState).get_forw_log_prob()});
+        chart(frmIdx, dstState).set_forw_log_prob(logProb);
+      }
+    }
+  }
   //  END_LAB
-  //
 
   //  This function computes the total forward prob of the entire utterence,
   //  i.e., the sum of the probabilities of all complete paths through
@@ -113,8 +126,8 @@ double forward_backward(const Graph& graph, const matrix<double>& gmmProbs,
   //      These counts will later be used to update GMM statistics.
   //
   //  Fill in backward pass here.
-  for (int frmIdx = frmCnt-1; frmIdx >= 0; frmIdx--) {
-    vector<vector<double> > backwardProbs(stateCnt);
+  // 3. Recursive backward pass
+  for (int frmIdx = frmCnt - 1; frmIdx >= 0; --frmIdx) {
     for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
       int arcCnt = graph.get_arc_count(stateIdx);
       int arcId = graph.get_first_arc_id(stateIdx);
@@ -122,36 +135,34 @@ double forward_backward(const Graph& graph, const matrix<double>& gmmProbs,
         Arc arc;
         arcId = graph.get_arc(arcId, arc);
         int dstState = arc.get_dst_state();
-        int gmmIdx = arc.get_gmm();
-        assert(gmmIdx >= 0);
-        double gmmProb = gmmProbs(frmIdx, gmmIdx);
-        double arcProb = arc.get_log_prob();
-        double logProb = chart(frmIdx+1, dstState).get_back_log_prob();
-        // Next state is activated backward
-        if (logProb > g_zeroLogProb) {
-          double totalProb = logProb + gmmProb + arcProb;
-          backwardProbs[stateIdx].push_back(totalProb);
-        }
-      }
-    }
-    for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
-      if (backwardProbs[stateIdx].size() > 0) {
-        chart(frmIdx, stateIdx).set_back_log_prob(add_log_probs(backwardProbs[stateIdx])); 
+        double logProb = chart(frmIdx + 1, dstState).get_back_log_prob() +
+                         arc.get_log_prob() + gmmProbs(frmIdx, arc.get_gmm());
+
+        logProb = add_log_probs(vector<double>{
+            logProb, chart(frmIdx, stateIdx).get_back_log_prob()});
+        chart(frmIdx, stateIdx).set_back_log_prob(logProb);
       }
     }
   }
-  // Recursive backward pass (Don't need terminate step)
 
-  // DEBUG backward
-  // cout << "backward\na\nb\nc" << endl;
-  // for (int frmIdx = 0; frmIdx <= frmCnt; ++frmIdx) {
-  //   for (int srcIdx = 0; srcIdx < stateCnt; ++srcIdx) {
-  //     cout << format(" %d") % chart(frmIdx, srcIdx).get_back_log_prob();
-  //   }
-  //   cout << endl;
-  // }
-  
-  // Record posterior prob
+  // 4. Record posterior prob
+  for (int frmIdx = frmCnt - 1; frmIdx >= 0; --frmIdx) {
+    for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
+      int arcCnt = graph.get_arc_count(stateIdx);
+      int arcId = graph.get_first_arc_id(stateIdx);
+      for (int arcIdx = 0; arcIdx < arcCnt; ++arcIdx) {
+        Arc arc;
+        arcId = graph.get_arc(arcId, arc);
+        int dstState = arc.get_dst_state();
+        double logProb = chart(frmIdx, stateIdx).get_forw_log_prob() +
+                         arc.get_log_prob() + gmmProbs(frmIdx, arc.get_gmm()) +
+                         chart(frmIdx + 1, dstState).get_back_log_prob();
+
+        double arcPosterior = exp(logProb - uttLogProb);
+        gmmCountList.push_back(GmmCount(arc.get_gmm(), frmIdx, arcPosterior));
+      }
+    }
+  }
   //  END_LAB
 
   return uttLogProb;

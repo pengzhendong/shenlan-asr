@@ -5,7 +5,7 @@
 #   Due: February 26, 2016 at 6pm
 ########################################################################
 
-* Name:
+* Name: randypeng
 
 
 ########################################################################
@@ -18,7 +18,8 @@
   they express the same set of models?  Can you think of any
   advantage one representation might have over the other?
 
-->
+-> 等价。前者是将 HMM 的状态放在 WFST 的状态上，属于 HMM 的逻辑结构，比较符合直觉；
+   后者是将 HMM 的状态放在 WFST 的弧上，便于计算和扩展，能够更加直观地观察到数据的计算过程。
 
 
 * When doing isolated word recognition, one method is to compute the
@@ -29,7 +30,7 @@
   Are these methods equivalent (in terms of the answer selected)?
   Why or why not?
 
-->
+-> 等价。因为 Veterbi 算法记录的就是似然最大的路径。不同之处是大图有可能进行剪枝优化，而小图会保留所有路径。
 
 
 * To do the dynamic programming computation correctly, one must
@@ -53,7 +54,8 @@
   If there are skip arcs, under what conditions is the good ordering
   still valid?
 
-->
+-> (1)。因为当前时刻的 cell 依赖之前所有时刻的 cell，需要确保当前时刻之前的 cell 都已计算完毕。
+   需要有其它弧可以到达该状态。
 
 
 * Create the file "p1b.out" by running:
@@ -91,13 +93,13 @@
   Explain how to compute the posterior count of each component Gaussian
   given the posterior count of the entire GMM.
 
-->
-
+-> 单个高斯分量的先验乘以似然，再除以整个 GMM 的后验。
 
 * Given the total posterior counts of each Gaussian in a GMM, explain
   how to reestimate the mixture weights of each Gaussian in that GMM.
 
-->
+-> 将每个数据点的后验值相加，然后除以数据点的总数即可。
+
 
 
 ########################################################################
@@ -162,9 +164,7 @@ use the command:
 This will list all of the files in your submission directory,
 along with file sizes and submission times.
 
-
 ########################################################################
 #
 ########################################################################
-
 

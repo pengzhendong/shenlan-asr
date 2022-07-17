@@ -18,7 +18,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <cassert>
-#include "front_end.H"  
+#include "front_end.H"
 #include "lab2_vit.H"
 #include "util.H"
 
@@ -93,29 +93,32 @@ double viterbi(const Graph& graph, const matrix<double>& gmmProbs,
   //
   //  The code for calculating the final probability and
   //  the best path is provided for you below.
-  // assert(graph.get_state_count() == stateCnt);
+  // 1. Init chart
+  for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
+    chart(0, stateIdx).assign(g_zeroLogProb, -1);
+  }
+  chart(0, graph.get_start_state()).assign(log(1.0), -1);
+  // 2. Recursive
+  for (int frmIdx = 1; frmIdx <= frmCnt; ++frmIdx) {
+    for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
+      int arcCnt = graph.get_arc_count(stateIdx);
+      int curArcId = graph.get_first_arc_id(stateIdx);
+      for (int arcIdx = 0; arcIdx < arcCnt; ++arcIdx) {
+        Arc arc;
+        int nextArcId = graph.get_arc(curArcId, arc);
+        int dstState = arc.get_dst_state();
+        double logProb = chart(frmIdx - 1, stateIdx).get_log_prob() +
+                         arc.get_log_prob() +
+                         gmmProbs(frmIdx - 1, arc.get_gmm());
 
-  // DEBUG chart BEGIN
-  // int frmMax = frmCnt + 1;
-  // for (int frmIdx = 0; frmIdx < frmMax; ++frmIdx) {
-  //   // log prob
-  //   for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
-  //     cout << format(" %d") % chart(frmIdx, stateIdx).get_log_prob();
-  //   }
-  //   cout << endl;
-  // }
-  // // arc id
-  // for (int frmIdx = 0; frmIdx < frmMax; ++frmIdx) {
-  //   for (int stateIdx = 0; stateIdx < stateCnt; ++stateIdx) {
-  //     cout << format(" %d") % chart(frmIdx, stateIdx).get_arc_id();
-  //   }
-  //   cout << endl;
-  // }
-  // DEBUG chart END
-  // return 0.0;
-
+        if (logProb > chart(frmIdx, dstState).get_log_prob()) {
+          chart(frmIdx, dstState).assign(logProb, curArcId);
+        }
+        curArcId = nextArcId;
+      }
+    }
+  }
   //  END_LAB
-  //
 
   //  The code for calculating the final probability and
   //  the best path is provided for you.
@@ -174,7 +177,6 @@ double viterbi_backtrace(const Graph& graph, matrix<VitCell>& chart,
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
 Lab2VitMain::Lab2VitMain(const map<string, string>& params)
     : m_params(params),
       m_frontEnd(m_params),
@@ -288,7 +290,6 @@ void main_loop(const char** argv) {
 }
 
 #endif
-
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

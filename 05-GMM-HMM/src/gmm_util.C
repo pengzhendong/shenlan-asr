@@ -6,7 +6,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
 GmmStats::GmmStats(GmmSet& gmmSet, const map<string, string>& params)
     : m_params(params),
       m_gmmSet(gmmSet),
@@ -62,8 +61,12 @@ double GmmStats::add_gmm_count(unsigned gmmIdx, double posterior,
   //      somewhere else at the appropriate time.
 
   // suppose each GMM only has one component
+  m_gaussCounts[gaussIdx] += posterior;
+  for (int dimIdx = 0; dimIdx < dimCnt; ++dimIdx) {
+    m_gaussStats1(gaussIdx, dimIdx) += posterior * feats[dimIdx];
+    m_gaussStats2(gaussIdx, dimIdx) += posterior * pow(feats[dimIdx], 2);
+  }
   //  END_LAB
-  //
 
   return 0.0;
 }
@@ -116,15 +119,29 @@ void GmmStats::reestimate() const {
   //
   //      for each dimension of each Gaussian with the reestimated
   //      values of the means and variances.
+  double newMean = 0;
+  double newVar = 0;
+  for (int gaussIdx = 0; gaussIdx < gaussCnt; ++gaussIdx) {
+    double occupancy = m_gaussCounts[gaussIdx];
+    for (int dimIdx = 0; dimIdx < dimCnt; ++dimIdx) {
+      double gaussState1 = m_gaussStats1(gaussIdx, dimIdx);
+      double gaussState2 = m_gaussStats2(gaussIdx, dimIdx);
+      newMean = gaussState1 / occupancy;
+      // var = sum(x^2)/count-2*sum(x)*mean/count+sum(mean^2)/count
+      //     = state2/count-2*mean^2+count*mean^2/count
+      //     = state2/count-mean^2
+      newVar = gaussState2 / occupancy - pow(newMean, 2);
 
+      m_gmmSet.set_gaussian_mean(gaussIdx, dimIdx, newMean);
+      m_gmmSet.set_gaussian_var(gaussIdx, dimIdx, newVar);
+    }
+  }
   //  END_LAB
-  //
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
 void init_simple_gmms(GmmSet& gmmSet, unsigned gmmCnt, unsigned dimCnt) {
   vector<int> gmmCompCounts(gmmCnt, 1);
   gmmSet.init(gmmCompCounts, dimCnt);
@@ -207,7 +224,6 @@ void expand_gmms_ci_to_cd(const GmmSet& srcGmmSet, GmmSet& dstGmmSet,
   }
   assert(dstGmmIdx == (int)dstGmmSet.get_gmm_count());
 }
-
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
