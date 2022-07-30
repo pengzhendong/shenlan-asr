@@ -11,6 +11,7 @@ for i, x in enumerate(targets_list):
 
 
 class Layer:
+
     def forward(self, input):
         ''' Forward function by input
         Args:
@@ -43,16 +44,18 @@ class Layer:
 
 
 class ReLU(Layer):
+
     def forward(self, input):
-        # BEGIN_LAB
-        # END_LAB
+        return np.maximum(input, 0)
 
     def backward(self, input, output, d_output):
-        # BEGIN_LAB
-        # END_LAB
+        d_input = np.array(d_output, copy=True)
+        d_input[output <= 0] = 0
+        return d_input
 
 
 class FullyConnect(Layer):
+
     def __init__(self, in_dim, out_dim):
         self.w = np.random.randn(out_dim, in_dim) * np.sqrt(2.0 / in_dim)
         self.b = np.zeros(out_dim)
@@ -60,25 +63,27 @@ class FullyConnect(Layer):
         self.db = np.zeros(out_dim)
 
     def forward(self, input):
-        # BEGIN_LAB
-        # END_LAB
+        return np.dot(input, self.w.T) + self.b
 
     def backward(self, input, output, d_output):
         batch_size = input.shape[0]
-        in_diff = None
-        # BEGIN_LAB, compute in_diff/dw/db here
-        # END_LAB
+        # Compute in_diff/dw/db
+        self.dw = np.dot(d_output.T, input)
+        self.db = np.sum(d_output, axis=0)
+        in_diff = np.dot(d_output, self.w)
+
         # Normalize dw/db by batch size
         self.dw = self.dw / batch_size
         self.db = self.db / batch_size
         return in_diff
 
     def update(self):
-        self.w = self.w - self.learning_rate * self.dw
-        self.b = self.b - self.learning_rate * self.db
+        self.w -= self.learning_rate * self.dw
+        self.b -= self.learning_rate * self.db
 
 
 class Softmax(Layer):
+
     def forward(self, input):
         row_max = input.max(axis=1).reshape(input.shape[0], 1)
         x = input - row_max
@@ -92,6 +97,7 @@ class Softmax(Layer):
 
 
 class DNN:
+
     def __init__(self, in_dim, out_dim, hidden_dim, num_hidden):
         self.layers = []
         self.layers.append(FullyConnect(in_dim, hidden_dim))
@@ -150,6 +156,7 @@ def train(dnn):
     permute = np.random.permutation(num_samples)
     inputs = inputs[permute]
     labels = labels[permute]
+
     num_epochs = 20
     batch_size = 100
     for i in range(num_epochs):
